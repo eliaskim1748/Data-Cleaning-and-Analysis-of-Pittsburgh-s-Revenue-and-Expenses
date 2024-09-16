@@ -29,7 +29,7 @@ add column date_year int;
 
 update pittsburgh_dataset
 set date_day = day(general_ledger_date),
-	date_month = month(general_ledger_date),
+    date_month = month(general_ledger_date),
     date_year = year(general_ledger_date);
 
 -- Standardizing formats 
@@ -40,8 +40,8 @@ rename column ledger_descrpition to ledger_description;
 
 update pittsburgh_dataset
 set fund_description = upper(fund_description),
-	department_name = upper(department_name),
-	object_account_description = upper(object_account_description),
+    department_name = upper(department_name),
+    object_account_description = upper(object_account_description),
     ledger_description = upper(ledger_description);
 
 update pittsburgh_dataset
@@ -49,14 +49,14 @@ set department_name =
 	replace(
 		replace(
 			replace(department_name
-            , ' ', '<>')
+            		, ' ', '<>')
 		, '><', '')
 	, '<>', ' '),
     object_account_description = 
 	replace(
 		replace(
 			replace(object_account_description
-            , ' ', '<>')
+            		, ' ', '<>')
 		, '><', '')
 	, '<>', ' ');
 
@@ -65,21 +65,21 @@ set fund_description =
 	replace(
 		replace(
 			replace(fund_description
-            , ' - ', '-')
+            		, ' - ', '-')
 		, ' -', '-')
 	, '- ', '-'),
     department_name = 
 	replace(
 		replace(
 			replace(department_name
-            , ' - ', '-')
+            		, ' - ', '-')
 		, ' -', '-')
 	, '- ', '-'),
     object_account_description = 
 	replace(
 		replace(
 			replace(object_account_description
-            , ' - ', '-')
+            		, ' - ', '-')
 		, ' -', '-')
 	, '- ', '-');
     
@@ -88,13 +88,13 @@ set object_account_description =
 	replace(
 		replace(
 			replace(object_account_description
-            , ' / ', '/')
+            		, ' / ', '/')
 		, ' /', '/')
 	, '/ ', '/');
 
 update pittsburgh_dataset
 set fund_description = replace(fund_description, '.', ''),
-	object_account_description = replace(object_account_description, '.', '');
+    object_account_description = replace(object_account_description, '.', '');
 
 update pittsburgh_dataset
 set fund_description = replace(fund_description, 'TRUST FUND', 'TF');
@@ -107,22 +107,22 @@ set fund_description = replace(fund_description, 'TRUST FUND', 'TF');
 update pittsburgh_dataset
 set fund_description = 
 	case when fund_description = 'TREE TAXING BODIES' then 'THREE TAXING BODIES'
-		when fund_description = 'DURG ABUSE RESISTANCE ED TF' then 'DRUG ABUSE RESISTANCE ED TF'
-        else fund_description
+	    when fund_description = 'DURG ABUSE RESISTANCE ED TF' then 'DRUG ABUSE RESISTANCE ED TF'
+            else fund_description
 	end;
 
 update pittsburgh_dataset
 set object_account_description = 
 	case when object_account_description = '2% LOCAL SARE OF SLOTS REVENUE' then '2% LOCAL SHARE OF SLOTS REVENUE'
-		when object_account_description = 'INTERGOVEN REVENUE-FEDERAL' then 'INTERGOVERN REVENUE-FEDERAL'
-        when object_account_description = 'INTERGOVEN REVENUE-STATE' then 'INTERGOVERN REVENUE-STATE'
-        else object_account_description
+	    when object_account_description = 'INTERGOVEN REVENUE-FEDERAL' then 'INTERGOVERN REVENUE-FEDERAL'
+            when object_account_description = 'INTERGOVEN REVENUE-STATE' then 'INTERGOVERN REVENUE-STATE'
+            else object_account_description
 	end;
   
 update pittsburgh_dataset
 set amount = 
 	case when ledger_description = 'EXPENSES' then -ABS(amount)
-		when ledger_description = 'REVENUES' then ABS(amount)
+	    when ledger_description = 'REVENUES' then ABS(amount)
 	end;
 
 -- I noticed that rows with the ledger description TRANSFERS had null amounts
@@ -135,18 +135,18 @@ where amount is null;
 -- Removing duplicates
 
 with rownumcte as (
-	select *, 
-		row_number() over(
-			partition by 
-				fund_number,
-				department_number,
-				object_account_number,
-				general_ledger_date,
-				amount
-			order by id
-		) as rownum
-	from
-		pittsburgh_dataset
+    select *, 
+	row_number() over(
+	    partition by 
+		fund_number,
+		department_number,
+		object_account_number,
+		general_ledger_date,
+		amount
+	    order by id
+	) as rownum
+    from
+	pittsburgh_dataset
 )
 select *
 from rownumcte
@@ -166,14 +166,14 @@ drop column cost_center_description;
 -- Q1. How many reports were made in each category?
 
 select ledger_description,
-	count(*) as report_count
+    count(*) as report_count
 from pittsburgh_dataset
 group by ledger_description;
 
 -- Q2. What was the distribution of reports by department?
 
 select department_name,
-	count(department_name) as reports
+    count(department_name) as reports
 from pittsburgh_dataset
 group by department_name
 order by reports;
@@ -181,7 +181,7 @@ order by reports;
 -- Q3. Which department had the highest total profit? Lowest?
 
 select department_name,
-	sum(amount) as total_profit
+    sum(amount) as total_profit
 from pittsburgh_dataset
 group by department_name
 order by total_profit desc;
@@ -189,13 +189,13 @@ order by total_profit desc;
 -- Q4. How did the average profit change over time?
 
 select date_year, 
-	date_month,
-	sum(amount) as total_profit,
-	round(avg(sum(amount)) over( 
-		order by date_year, 
-			date_month
+    date_month,
+    sum(amount) as total_profit,
+    round(avg(sum(amount)) over( 
+        order by date_year, 
+	    date_month
         rows between 1 preceding and current row
-	), 2) as moving_average
+    ), 2) as moving_average
 from pittsburgh_dataset
 group by date_year, date_month
 order by date_year, date_month;
@@ -203,9 +203,13 @@ order by date_year, date_month;
 -- Q5. What was the year-over-year difference in profit?
 
 select date_year,
-	sum(amount) as total_profit,
-    lag(sum(amount)) over(order by date_year) as previous_year,
-    sum(amount) - lag(sum(amount)) over(order by date_year) as YoY_difference
+    sum(amount) as total_profit,
+    lag(sum(amount)) over(
+	order by date_year
+    ) as previous_year,
+    sum(amount) - lag(sum(amount)) over(
+	order by date_year
+    ) as YoY_difference
 from pittsburgh_dataset
 group by date_year
 order by date_year;
