@@ -1,4 +1,4 @@
--- Cleaning Data in SQL 
+-- Cleaning data in MySQL 
 
 select *
 from portfolioproject.cityofpittsburgh;
@@ -6,38 +6,45 @@ from portfolioproject.cityofpittsburgh;
 show fields
 from portfolioproject.cityofpittsburgh;
 
--- Converting Type
+-- Creating a temporary table
 
-alter table cityofpittsburgh
+create table pittsburgh_dataset as
+select *
+from portfolioproject.cityofpittsburgh;
+
+-- Converting type
+
+alter table pittsburgh_dataset
 modify column general_ledger_date date;
 
-alter table cityofpittsburgh
+alter table pittsburgh_dataset
 modify column amount decimal(65,2);
 
--- Parsing and Splitting Data
+-- Parsing and splitting data
 
-alter table cityofpittsburgh
+alter table pittsburgh_dataset
 add column date_day int,
 add column date_month int,
 add column date_year int;
 
-update cityofpittsburgh
+update pittsburgh_dataset
 set date_day = day(general_ledger_date),
 	date_month = month(general_ledger_date),
     date_year = year(general_ledger_date);
 
--- Standardizing Formats 
+-- Standardizing formats 
 
-alter table cityofpittsburgh
+alter table pittsburgh_dataset
 rename column _id to id,
 rename column ledger_descrpition to ledger_description;
 
-update cityofpittsburgh
-set department_name = upper(department_name),
-	ledger_description = upper(ledger_description),
-    object_account_description = upper(object_account_description);
+update pittsburgh_dataset
+set fund_description = upper(fund_description),
+	department_name = upper(department_name),
+	object_account_description = upper(object_account_description),
+    ledger_description = upper(ledger_description);
 
-update cityofpittsburgh
+update pittsburgh_dataset
 set department_name = 
 	replace(
 		replace(
@@ -53,7 +60,7 @@ set department_name =
 		, '><', '')
 	, '<>', ' ');
 
-update cityofpittsburgh
+update pittsburgh_dataset
 set fund_description = 
 	replace(
 		replace(
@@ -75,51 +82,57 @@ set fund_description =
             , ' - ', '-')
 		, ' -', '-')
 	, '- ', '-');
+    
+update pittsburgh_dataset
+set object_account_description = 
+	replace(
+		replace(
+			replace(object_account_description
+            , ' / ', '/')
+		, ' /', '/')
+	, '/ ', '/');
 
-update cityofpittsburgh
+update pittsburgh_dataset
 set fund_description = replace(fund_description, '.', ''),
 	object_account_description = replace(object_account_description, '.', '');
 
-update cityofpittsburgh
-set object_account_description = substring_index(object_account_description, '-', 1);
+update pittsburgh_dataset
+set fund_description = replace(fund_description, 'TRUST FUND', 'TF');
 
-update cityofpittsburgh
-set fund_description = replace(fund_description, '3', 'THREE'),
-    fund_description = replace(fund_description, 'TRUST FUND', 'TF');
+-- Correcting inaccuracies 
 
--- Correcting Inaccuracies 
+-- I noticed that there was a character limit of 30, so some entries were cut off
+-- For the sake of time, I only corrected other inaccuracies
 
-update cityofpittsburgh
-set department_name = 
-	case when department_name = 'PERMITS LICENSES AND INSPECTIO' then 'PERMITS LICENSES AND INSPECTION'
-		when department_name = 'OFFICE OF MANAGEMENT AND BUDG' then 'OFFICE OF MANAGEMENT AND BUDGET'
-		else department_name
+update pittsburgh_dataset
+set fund_description = 
+	case when fund_description = 'TREE TAXING BODIES' then 'THREE TAXING BODIES'
+		when fund_description = 'DURG ABUSE RESISTANCE ED TF' then 'DRUG ABUSE RESISTANCE ED TF'
+        else fund_description
 	end;
 
-update cityofpittsburgh
+update pittsburgh_dataset
 set object_account_description = 
-    case when object_account_description = 'PROPERTY CERTIFICATE APPLICATI' then 'PROPERTY CERTIFICATE APPLICATION'
-		when object_account_description = 'ANIMAL CARE AND CONTROL REVENU' then 'ANIMAL CARE AND CONTROL REVENUE'
-		when object_account_description = 'COMPUTER MAINTANACE' then 'COMPUTER MAINTENANCE'
-		else object_account_description
+	case when object_account_description = '2% LOCAL SARE OF SLOTS REVENUE' then '2% LOCAL SHARE OF SLOTS REVENUE'
+		when object_account_description = 'INTERGOVEN REVENUE-FEDERAL' then 'INTERGOVERN REVENUE-FEDERAL'
+        when object_account_description = 'INTERGOVEN REVENUE-STATE' then 'INTERGOVERN REVENUE-STATE'
+        else object_account_description
 	end;
-
-update portfolioproject.cityofpittsburgh
-set fund_description = replace(fund_description, 'TREE', 'THREE');
-
-update portfolioproject.cityofpittsburgh
+  
+update pittsburgh_dataset
 set amount = 
 	case when ledger_description = 'EXPENSES' then -ABS(amount)
 		when ledger_description = 'REVENUES' then ABS(amount)
 	end;
 
-select *
-from portfolioproject.cityofpittsburgh
-where coalesce (id, '') = '';
+-- I noticed that rows with the ledger description TRANSFERS had null amounts
+-- Since internal transfers are neither a revenue or expense, I replaced the nulls with 0
 
--- I cycled through the columns using the query above and there were no null/blank values
+update pittsburgh_dataset
+set amount = 0 
+where amount is null;
 
--- Removing Duplicates
+-- Removing duplicates
 
 with rownumcte as (
 	select *, 
@@ -133,120 +146,98 @@ with rownumcte as (
 			order by id
 		) as rownum
 	from
-		portfolioproject.cityofpittsburgh
+		pittsburgh_dataset
 )
 select *
 from rownumcte
-where rownum > 1
-order by fund_number;
+where rownum > 1;
 	
 -- Although it appears as though there are duplicates, there most likely are not
--- The City of Pittsburgh is audited on a regular basis
--- Any duplicates would be flagged as deficiencies
-    
--- Deleting Unused Columns
+-- The City of Pittsburgh is audited on a regular basis so any duplicates would be flagged as deficiencies
 
-alter table cityofpittsburgh
+-- Dropping unused columns
+
+alter table pittsburgh_dataset
 drop column cost_center_number,
 drop column cost_center_description;
 
--- Exploring Data in SQL
+-- Exploring data in MySQL
 
--- Q1. How many revenue and expense reports were made?
+-- Q1. How many reports were made in each category?
 
 select ledger_description,
 	count(*) as report_count
-from portfolioproject.cityofpittsburgh
+from pittsburgh_dataset
 group by ledger_description;
 
--- Q2. What was the distribution of departments by average revenue? Average expense?
+-- Q2. What was the distribution of reports by department?
 
 select department_name,
-	count(department_name) as department_count,
-    round(avg(amount), 2) as avg_revenue
-from portfolioproject.cityofpittsburgh
-where ledger_description = 'REVENUES'
+	count(department_name) as reports
+from pittsburgh_dataset
 group by department_name
-order by avg_revenue desc;
-
-select department_name,
-	count(department_name) as department_count,
-    round(avg(amount), 2) as avg_expense
-from portfolioproject.cityofpittsburgh
-where ledger_description = 'EXPENSES'
-group by department_name
-order by avg_expense;
+order by reports;
 
 -- Q3. Which department had the highest total profit? Lowest?
 
 select department_name,
 	sum(amount) as total_profit
-from portfolioproject.cityofpittsburgh
+from pittsburgh_dataset
 group by department_name
 order by total_profit desc;
 
--- Q4. How did total profit for all departments change over time?
+-- Q4. How did the average profit change over time?
 
-select general_ledger_date,
+select date_year, 
+	date_month,
 	sum(amount) as total_profit,
-	sum(sum(amount)) over( 
-		order by general_ledger_date 
-        rows between unbounded preceding and current row
-	) as running_total_profit
-from portfolioproject.cityofpittsburgh
-group by general_ledger_date
-order by general_ledger_date;
+	round(avg(sum(amount)) over( 
+		order by date_year, 
+			date_month
+        rows between 1 preceding and current row
+	), 2) as moving_average
+from pittsburgh_dataset
+group by date_year, date_month
+order by date_year, date_month;
 
--- Q5. What was the breakdown of revenue earned by each department? Expense incurred?
+-- Q5. What was the year-over-year difference in profit?
 
-select department_name,
-	object_account_description,
-    sum(amount) as total_revenue
-from portfolioproject.cityofpittsburgh
-where ledger_description = 'REVENUES'
-group by department_name,
-	object_account_description
-order by department_name, 
-	total_revenue desc;
-
-select department_name,
-	object_account_description,
-    sum(amount) as total_expense
-from portfolioproject.cityofpittsburgh
-where ledger_description = 'EXPENSES'
-group by department_name,
-	object_account_description
-order by department_name, 
-	total_expense;
+select date_year,
+	sum(amount) as total_profit,
+    lag(sum(amount)) over(order by date_year) as previous_year,
+    sum(amount) - lag(sum(amount)) over(order by date_year) as YoY_difference
+from pittsburgh_dataset
+group by date_year
+order by date_year;
 
 -- Q6. What proportion did each object account contribute to total revenue? Total expense?
 
 with revenue_summary as (
-	select sum(amount) as total_revenue_all_dep
-    from portfolioproject.cityofpittsburgh
-    where ledger_description = 'REVENUES' 
+    select sum(amount) as total_revenue_all_dep
+    from pittsburgh_dataset
+    where ledger_description = 'REVENUES'
 )
-select cp.object_account_description,
-	sum(cp.amount) as total_revenue,
-	(sum(cp.amount)/rs.total_revenue_all_dep) * 100 as percent_contribution
-from portfolioproject.cityofpittsburgh as cp
-cross join revenue_summary as rs
-where ledger_description = 'REVENUES' 
-group by cp.object_account_description, 
-	rs.total_revenue_all_dep
+select 
+    cp.object_account_description,
+    sum(cp.amount) as total_revenue,
+    (sum(cp.amount) / rs.total_revenue_all_dep) * 100 as percent_contribution
+from pittsburgh_dataset as cp
+join revenue_summary as rs
+on cp.ledger_description = 'REVENUES'
+group by cp.object_account_description, rs.total_revenue_all_dep
 order by percent_contribution desc;
 
 with expense_summary as (
-	select sum(amount) as total_expense_all_dep
-    from portfolioproject.cityofpittsburgh
-    where ledger_description = 'EXPENSES' 
+    select sum(amount) as total_expense_all_dep
+    from pittsburgh_dataset
+    where ledger_description = 'EXPENSES'
 )
-select cp.object_account_description,
-	sum(cp.amount) as total_expense,
-	(sum(cp.amount)/es.total_expense_all_dep) * 100 as percent_contribution
-from portfolioproject.cityofpittsburgh as cp
-cross join expense_summary as es
-where ledger_description = 'EXPENSES' 
-group by cp.object_account_description, 
-	es.total_expense_all_dep
+select 
+    cp.object_account_description,
+    sum(cp.amount) as total_expense,
+    (sum(cp.amount) / es.total_expense_all_dep) * 100 as percent_contribution
+from pittsburgh_dataset as cp
+join expense_summary as es
+on cp.ledger_description = 'EXPENSES'
+group by cp.object_account_description, es.total_expense_all_dep
 order by percent_contribution desc;
